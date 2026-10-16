@@ -21,10 +21,12 @@ export function parseDraft(row: typeof listingDrafts.$inferSelect) {
 }
 
 export function draftValues(body: DraftBody) {
-  if (typeof body.sourceUrl !== "string" || !body.sourceUrl.trim()) return { error: "请先填写来源链接。" } as const;
+  if (body.sourceUrl !== undefined && typeof body.sourceUrl !== "string") return { error: "来源链接格式无效。" } as const;
+  const sourceUrl = typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : "";
+  if (sourceUrl && (!/^https:\/\//i.test(sourceUrl) || sourceUrl.length > 2000)) return { error: "来源链接必须是有效的 HTTPS 地址，且不超过 2000 字符。" } as const;
   const attributes = typeof body.attributes === "object" && body.attributes ? Object.fromEntries(Object.entries(body.attributes as Record<string, unknown>).filter(([key]) => key in emptyAttributes).map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 500) : ""])) : emptyAttributes;
   const assets = imageAssets(body.imageAssets);
   const selectedAssets = assets.map((asset) => `/api/listings/media/${asset.selected === "optimized" && asset.optimizedKey ? asset.optimizedKey : asset.originalKey}`);
   const remoteImages = Array.isArray(body.images) ? body.images.filter((value): value is string => typeof value === "string" && /^https:\/\//.test(value)).slice(0, Math.max(0, 12 - selectedAssets.length)) : [];
-  return { sourceUrl: body.sourceUrl.slice(0, 2000), marketplace: body.marketplace === "CA" || body.marketplace === "AU" ? body.marketplace : "US", title: typeof body.title === "string" ? body.title.slice(0, 500) : "", bullets: JSON.stringify(Array.isArray(body.bullets) ? body.bullets.map(String).slice(0, 5) : []), description: typeof body.description === "string" ? body.description.slice(0, 5000) : "", images: JSON.stringify([...remoteImages, ...selectedAssets].slice(0, 12)), imageAssets: JSON.stringify(assets), attributes: JSON.stringify({ ...emptyAttributes, ...attributes }), selectedVariant: typeof body.selectedVariant === "string" ? body.selectedVariant.slice(0, 120) : "" } as const;
+  return { sourceUrl, marketplace: body.marketplace === "CA" || body.marketplace === "AU" ? body.marketplace : "US", title: typeof body.title === "string" ? body.title.slice(0, 500) : "", bullets: JSON.stringify(Array.isArray(body.bullets) ? body.bullets.map(String).slice(0, 5) : []), description: typeof body.description === "string" ? body.description.slice(0, 5000) : "", images: JSON.stringify([...remoteImages, ...selectedAssets].slice(0, 12)), imageAssets: JSON.stringify(assets), attributes: JSON.stringify({ ...emptyAttributes, ...attributes }), selectedVariant: typeof body.selectedVariant === "string" ? body.selectedVariant.slice(0, 120) : "" } as const;
 }
