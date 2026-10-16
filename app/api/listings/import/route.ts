@@ -55,7 +55,7 @@ function parseImageData(html: string): { selectedVariant: string; images: string
   // data-old-hires is the stable high-resolution product-gallery field and is not a generic page-image scan.
   const galleryImages = [...html.matchAll(/data-old-hires=["'](https?:[^"']+)["']/gi)].map((match) => decode(match[1])).filter((url) => /m\.media-amazon\.com\/images\/I\//.test(url));
   const fallback = meta(html, "og:image");
-  const images = [...new Set([...variantImages, ...galleryImages])].slice(0, 8);
+  const images = [...new Set(variantImages.length ? variantImages : galleryImages)].slice(0, 8);
   return { selectedVariant, images: images.length ? images : fallback ? [fallback] : [] };
 }
 
@@ -64,10 +64,44 @@ export async function POST(request: Request) {
     const { url } = await request.json() as { url?: unknown };
     if (typeof url !== "string" || url.length > 2000) return Response.json({ message: "请输入有效的亚马逊商品链接。" }, { status: 400 });
     const parsed = new URL(url);
-    if (parsed.protocol !== "https:" || !AMAZON_HOST.test(parsed.hostname)) return Response.json({ message: "仅支持 HTTPS 的 Amazon 商品链接。" }, { status: 400 });
-    const response = await fetch(parsed.toString(), { headers: { "User-Agent": "Mozilla/5.0 (compatible; AmazonOpsCenter/1.0)", Accept: "text/html,application/xhtml+xml" }, redirect: "follow", signal: AbortSignal.timeout(12000) });
+    if (parsed.protocol !== "https:" || !AMAZON_HOST.test(parsed.hostname) || parsed.username || parsed.password || parsed.port) return Response.json({ message: "仅支持 HTTPS 的 Amazon 商品链接。" }, { status: 400 });
+    let current = parsed;
+    let response: Response | undefined;
+    for (let hop = 0; hop <= 3; hop++) {
+      response = await fetch(current.toString(), {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; AmazonOpsCenter/1.0)", Accept: "text/html,application/xhtml+xml" },
+        redirect: "manual", signal: AbortSignal.timeout(12000),
+      });
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      if (!location || hop === 3) return Response.json({ message: "商品链接跳转异常或次数过多。" }, { status: 422 });
+      const next = new URL(location, current);
+      if (next.protocol !== "https:" || !AMAZON_HOST.test(next.hostname) || next.username || next.password || next.port) {
+        return Response.json({ message: "商品链接跳转到了不支持的地址。" }, { status: 422 });
+      }
+      current = next;
+    }
+    if (!response) return Response.json({ message: "无法获取商品页面。" }, { status: 422 });
     if (!response.ok) return Response.json({ message: "该页面暂时无法获取，请稍后重试或手动录入。" }, { status: 422 });
-    const html = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    if (!/text\/html|application\/xhtml\+xml/i.test(contentType)) return Response.json({ message: "商品页面不是 HTML 内容。" }, { status: 422 });
+    const maxBytes = 4 * 1024 * 1024;
+    if (Number(response.headers.get("content-length") || 0) > maxBytes) return Response.json({ message: "商品页面过大，无法导入。" }, { status: 422 });
+    const reader = response.body?.getReader();
+    if (!reader) return Response.json({ message: "无法读取商品页面。" }, { status: 422 });
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) { await reader.cancel(); return Response.json({ message: "商品页面过大，无法导入。" }, { status: 422 }); }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const html = new TextDecoder().decode(bytes);
     const title = strip(html.match(/id=["']productTitle["'][^>]*>([\s\S]*?)<\//i)?.[1] ?? "") || meta(html, "og:title");
     const { selectedVariant, images } = parseImageData(html);
     const bullets = parseBullets(html); const attributes = parseAttributes(html); const description = meta(html, "description") || meta(html, "og:description");
