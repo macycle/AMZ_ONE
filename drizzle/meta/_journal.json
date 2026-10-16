@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790260663947,
+      "tag": "0000_colossal_night_thrasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790667890042,
+      "tag": "0001_unknown_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790668847818,
+      "tag": "0002_mute_menace",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790670721908,
+      "tag": "0003_nappy_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791730264076,
+      "tag": "0004_skinny_freak",
+      "breakpoints": true
+    }
+  ]
+}

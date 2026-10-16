@@ -1,0 +1,1 @@
+ALTER TABLE `listing_drafts` ADD `image_assets` text DEFAULT '[]' NOT NULL;
